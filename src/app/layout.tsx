@@ -1,5 +1,11 @@
+
 import type { Metadata } from "next";
-import { Manrope, Inter, JetBrains_Mono, Instrument_Serif } from "next/font/google";
+import {
+  Manrope,
+  Inter,
+  JetBrains_Mono,
+  Instrument_Serif,
+} from "next/font/google";
 import { Navbar } from "../components/layout/navbar";
 import { Footer } from "../components/layout/footer";
 import { Toaster } from "../components/ui/sonner";
@@ -13,12 +19,18 @@ const manrope = Manrope({
   weight: ["700", "800"],
   variable: "--font-heading",
 });
-const inter = Inter({ subsets: ["latin"], variable: "--font-body" });
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-body",
+});
+
 const mono = JetBrains_Mono({
   subsets: ["latin"],
   weight: "400",
   variable: "--font-mono",
 });
+
 const serif = Instrument_Serif({
   subsets: ["latin"],
   weight: "400",
@@ -28,11 +40,19 @@ const serif = Instrument_Serif({
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
+
   title: {
     default: "Chiranthan N S — AI/ML Engineer",
     template: "%s · Chiranthan N S",
   },
+
   description: siteDescription,
+
+  // Google Search Console ownership verification
+  verification: {
+    google: "muutTbt8B4N5-FxOwwi2bL-fw7EpddpOc6Aj8GYD2nA",
+  },
+
   openGraph: {
     type: "website",
     locale: "en_IN",
@@ -49,6 +69,7 @@ export const metadata: Metadata = {
       },
     ],
   },
+
   twitter: {
     card: "summary_large_image",
     title: "Chiranthan N S — AI/ML Engineer",
@@ -56,6 +77,7 @@ export const metadata: Metadata = {
     images: ["/images/profile.jpg"],
     creator: "@n_chiranth8732",
   },
+
   robots: {
     index: true,
     follow: true,
@@ -75,9 +97,11 @@ const jsonLd = {
     name: "Vidyavardhaka College of Engineering",
     address: "Mysuru, Karnataka, India",
   },
-  sameAs: [profile.githubUrl, profile.linkedinUrl, profile.xUrl].filter(
-    Boolean,
-  ),
+  sameAs: [
+    profile.githubUrl,
+    profile.linkedinUrl,
+    profile.xUrl,
+  ].filter(Boolean),
 };
 
 export default function RootLayout({
@@ -93,9 +117,12 @@ export default function RootLayout({
       <head>
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(jsonLd),
+          }}
         />
       </head>
+
       <body className="bg-background text-foreground min-h-screen antialiased">
         <Navbar />
         <main>{children}</main>
