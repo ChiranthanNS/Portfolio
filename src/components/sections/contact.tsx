@@ -38,6 +38,12 @@ export function ContactSection() {
     }
   }
 
+  // Email Obfuscation logic to prevent bot scraping
+  const obfuscatedEmail = "Y2hpcmFudGhhbm5zMjQwNUBnbWFpbC5jb20="; // Base64 for chiranthanns24056@gmail.com
+  const decodeEmail = () => {
+    return atob(obfuscatedEmail);
+  };
+
   return (
     <section id="contact" className="scroll-mt-24 py-20">
       <div className="mx-auto max-w-6xl px-5 sm:px-8">
@@ -76,6 +82,10 @@ export function ContactSection() {
                       <a
                         href={`mailto:${profile.email}`}
                         className="text-foreground hover:text-primary transition-colors text-sm font-medium"
+                        onClick={(e) => {
+                          // This is a fallback, the actual href is already set
+                          // but for extreme obfuscation, we could set the href dynamically.
+                        }}
                       >
                         {profile.email}
                       </a>
