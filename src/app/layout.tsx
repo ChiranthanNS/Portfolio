@@ -3,6 +3,7 @@ import { Manrope, Inter, JetBrains_Mono, Instrument_Serif } from "next/font/goog
 import { Navbar } from "../components/layout/navbar";
 import { Footer } from "../components/layout/footer";
 import { Toaster } from "../components/ui/sonner";
+import { Analytics } from "@vercel/analytics/next";
 import { profile } from "../content/profile";
 import { siteDescription, siteUrl } from "../lib/site";
 import "./globals.css";
@@ -100,6 +101,7 @@ export default function RootLayout({
         <main>{children}</main>
         <Footer />
         <Toaster />
+        <Analytics />
       </body>
     </html>
   );
