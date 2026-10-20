@@ -1,7 +1,7 @@
 "use server";
 
 import { z } from "zod";
-import nodemailer, { type SendMailOptions } from "nodemailer";
+import nodemailer from "nodemailer";
 import { headers } from "next/headers";
 import { checkRateLimit } from "../../lib/security/rate-limit";
 
@@ -30,56 +30,6 @@ export type ContactSubmissionResult = {
   error?: string;
   statusCode?: number;
 };
-
-// Pure Gmail SMTP sender with Port 465 (SSL) and Port 587 (TLS) automatic fallback
-async function sendViaSmtp(options: SendMailOptions): Promise<unknown> {
-  const envPass = process.env.GMAIL_APP_PASSWORD || process.env.GMAIL_PASS;
-  const cleanEnvPass = envPass ? envPass.replace(/["'\s]/g, "") : "";
-  const pass =
-    cleanEnvPass && cleanEnvPass.length === 16 ? cleanEnvPass : "dzoeltepabysxnln";
-  const user = process.env.GMAIL_USER || "chiranthanns24056@gmail.com";
-
-  // Attempt 1: Port 465 (Implicit SSL)
-  try {
-    const transporter465 = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
-      auth: { user, pass },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 10000,
-    });
-
-    return await new Promise((resolve, reject) => {
-      transporter465.sendMail(options, (err, info) => {
-        if (err) reject(err);
-        else resolve(info);
-      });
-    });
-  } catch (err465) {
-    console.warn("[Contact] Port 465 failed, attempting Port 587 fallback:", err465);
-
-    // Attempt 2: Port 587 (Explicit TLS)
-    const transporter587 = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 587,
-      secure: false,
-      requireTLS: true,
-      auth: { user, pass },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 10000,
-    });
-
-    return await new Promise((resolve, reject) => {
-      transporter587.sendMail(options, (err, info) => {
-        if (err) reject(err);
-        else resolve(info);
-      });
-    });
-  }
-}
 
 export async function sendContactMessage(
   formData: FormData,
@@ -129,10 +79,22 @@ export async function sendContactMessage(
 
     const { from_name, from_email, message } = parsed.data;
 
-    const toEmail = "chiranthanns24056@gmail.com";
-    const gmailUser = process.env.GMAIL_USER || "chiranthanns24056@gmail.com";
+    const gmailUser = "chiranthanns24056@gmail.com";
+    // Verified, active App Password for chiranthanns24056@gmail.com
+    const gmailPass = "dzoeltepabysxnln";
 
-    // Email 1: Notification to YOU (Clean card layout)
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: gmailUser,
+        pass: gmailPass,
+      },
+      tls: {
+        rejectUnauthorized: false,
+      },
+    });
+
+    // Email 1: Notification to YOU
     const ownerSubject = `New Portfolio Message from ${from_name}`;
     const ownerText = [
       "New Portfolio Inquiry",
@@ -181,19 +143,7 @@ export async function sendContactMessage(
 </body>
 </html>`;
 
-    // 4. Send notification to YOU via Gmail SMTP
-    await sendViaSmtp({
-      from: `"${from_name} via Portfolio" <${gmailUser}>`,
-      to: toEmail,
-      replyTo: from_email,
-      subject: ownerSubject,
-      text: ownerText,
-      html: ownerHtml,
-    });
-    console.log("[Contact] Owner notified via Gmail SMTP.");
-
-    // 5. Send confirmation to the VISITOR directly from your personal Gmail
-    // Shows your real Google profile picture and sender as chiranthanns24056@gmail.com
+    // Email 2: Automated confirmation to the VISITOR
     const visitorSubject = `Thank you for reaching out, ${from_name}!`;
     const visitorText = [
       `Hi ${from_name},`,
@@ -223,27 +173,35 @@ export async function sendContactMessage(
   </p>
 </div>`;
 
-    try {
-      await sendViaSmtp({
-        from: `Chiranthan N S <${gmailUser}>`,
-        to: from_email,
-        replyTo: gmailUser,
-        subject: visitorSubject,
-        text: visitorText,
-        html: visitorHtml,
-      });
-      console.log(`[Contact] Visitor confirmation sent directly from Gmail to: ${from_email}`);
-    } catch (visitorErr) {
-      console.warn("[Contact] Visitor confirmation SMTP delivery failed:", visitorErr);
-    }
+    // Send both emails concurrently via verified Gmail SMTP
+    const notifyOwner = transporter.sendMail({
+      from: `"${from_name} via Portfolio" <${gmailUser}>`,
+      to: gmailUser,
+      replyTo: from_email,
+      subject: ownerSubject,
+      text: ownerText,
+      html: ownerHtml,
+    });
+
+    const confirmVisitor = transporter.sendMail({
+      from: `"Chiranthan N S" <${gmailUser}>`,
+      to: from_email,
+      replyTo: gmailUser,
+      subject: visitorSubject,
+      text: visitorText,
+      html: visitorHtml,
+    });
+
+    await Promise.all([notifyOwner, confirmVisitor]);
 
     return { ok: true, statusCode: 200 };
   } catch (err: unknown) {
     console.error("[Contact] Email delivery failed:", err);
+    const detail =
+      err instanceof Error ? err.message : "Unknown error";
     return {
       ok: false,
-      error:
-        "Failed to send message. Please email me directly at chiranthanns24056@gmail.com",
+      error: `Failed to send message (${detail}). Please email me directly at chiranthanns24056@gmail.com`,
       statusCode: 500,
     };
   }
