@@ -1,7 +1,7 @@
 "use server";
 
 import { z } from "zod";
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
 import { headers } from "next/headers";
 import { checkRateLimit } from "../../lib/security/rate-limit";
 
@@ -71,43 +71,34 @@ export async function sendContactMessage(
     if (!parsed.success) {
       return {
         ok: false,
-        error: parsed.error.issues[0]?.message ?? "Please provide valid information.",
+        error:
+          parsed.error.issues[0]?.message ?? "Please provide valid information.",
         statusCode: 400,
       };
     }
 
     const { from_name, from_email, message } = parsed.data;
 
-    const gmailUser = process.env.GMAIL_USER || "chiranthanns24056@gmail.com";
-    const gmailPass = process.env.GMAIL_APP_PASSWORD || "dzoeltepabysxnln";
+    const resendApiKey = process.env.RESEND_API_KEY;
+    if (!resendApiKey) {
+      console.error("[Contact] RESEND_API_KEY is not set.");
+      return {
+        ok: false,
+        error:
+          "Failed to send message. Please email me directly at chiranthanns24056@gmail.com",
+        statusCode: 500,
+      };
+    }
 
-    const transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
-      auth: { user: gmailUser, pass: gmailPass },
-      connectionTimeout: 5000,
-      greetingTimeout: 5000,
-      socketTimeout: 5000,
-    });
+    const resend = new Resend(resendApiKey);
+    const toEmail = "chiranthanns24056@gmail.com";
 
-    // 4. Email to YOU — matches screenshot 1 (card style)
-    await transporter.sendMail({
-      from: `"${from_name} via Portfolio" <${gmailUser}>`,
-      to: gmailUser,
+    // 4. Email to YOU — card style matching your screenshot
+    await resend.emails.send({
+      from: "Portfolio Contact <onboarding@resend.dev>",
+      to: toEmail,
       replyTo: from_email,
       subject: `New Portfolio Message from ${from_name}`,
-      text: [
-        "New Portfolio Inquiry",
-        "",
-        `Name   ${from_name}`,
-        `Email  ${from_email}`,
-        "",
-        "Message",
-        message,
-        "",
-        `Hit Reply to respond directly to ${from_name}.`,
-      ].join("\n"),
       html: `
 <!DOCTYPE html>
 <html>
@@ -144,26 +135,13 @@ export async function sendContactMessage(
 </html>`,
     });
 
-    // 5. Auto-reply to visitor — matches screenshot 2 (plain clean style)
-    transporter
-      .sendMail({
-        from: `"Chiranthan N S" <${gmailUser}>`,
+    // 5. Auto-reply to visitor — plain clean style matching your screenshot
+    resend.emails
+      .send({
+        from: "Chiranthan N S <onboarding@resend.dev>",
         to: from_email,
-        replyTo: gmailUser,
+        replyTo: toEmail,
         subject: `Thank you for reaching out, ${from_name}!`,
-        text: [
-          `Hi ${from_name},`,
-          "",
-          "Thank you for reaching out! I have received your message and will get back to you shortly.",
-          "",
-          "Your message:",
-          `"${message}"`,
-          "",
-          "Best regards,",
-          "Chiranthan N S",
-          "AI/ML Engineer",
-          gmailUser,
-        ].join("\n"),
         html: `
 <!DOCTYPE html>
 <html>
@@ -176,13 +154,14 @@ export async function sendContactMessage(
             <td style="padding:32px;">
               <p style="margin:0 0 16px;font-size:15px;color:#111827;">Hi ${from_name},</p>
               <p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.6;">Thank you for reaching out! I have received your message and will get back to you shortly.</p>
-              <p style="margin:0 0 8px;font-size:15px;color:#374151;">Your message:<br>
-              <span style="color:#374151;">"${message}"</span></p>
-              <br>
-              <p style="margin:0;font-size:15px;color:#374151;">Best regards,<br>
-              Chiranthan N S<br>
-              AI/ML Engineer<br>
-              <a href="mailto:${gmailUser}" style="color:#6366f1;text-decoration:none;">${gmailUser}</a></p>
+              <p style="margin:0 0 4px;font-size:15px;color:#374151;">Your message:</p>
+              <p style="margin:0 0 20px;font-size:15px;color:#374151;">&ldquo;${message}&rdquo;</p>
+              <p style="margin:0;font-size:15px;color:#374151;line-height:1.8;">
+                Best regards,<br>
+                Chiranthan N S<br>
+                AI/ML Engineer<br>
+                <a href="mailto:${toEmail}" style="color:#6366f1;text-decoration:none;">${toEmail}</a>
+              </p>
             </td>
           </tr>
         </table>
