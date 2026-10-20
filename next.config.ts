@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const cspHeader = `
   default-src 'self';
@@ -49,12 +50,27 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  outputFileTracingRoot: path.join(__dirname),
   poweredByHeader: false, // Prevents X-Powered-By: Next.js information disclosure
+  compress: true,
+  images: {
+    formats: ["image/avif", "image/webp"],
+    minimumCacheTTL: 2592000, // 30 days
+  },
   async headers() {
     return [
       {
         source: "/:path*",
         headers: securityHeaders,
+      },
+      {
+        source: "/images/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
       },
     ];
   },

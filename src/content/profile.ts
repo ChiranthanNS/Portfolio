@@ -12,5 +12,5 @@ export const profile: Profile = {
   cvPath: undefined, // Resume pending — will be added when available
   about:
     "A hands-on AI/ML student dedicated to building practical applications. I learn by doing—constantly experimenting with AI tools, engineering smart workflows, and creating functional solutions for real-world problems.",
-  avatarUrl: "/images/profile.jpg",
+  avatarUrl: "/images/profile.webp",
 };

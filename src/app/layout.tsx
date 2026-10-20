@@ -18,17 +18,18 @@ const manrope = Manrope({
   subsets: ["latin"],
   weight: ["700", "800"],
   variable: "--font-heading",
+  display: "swap",
 });
-
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-body",
+  display: "swap",
 });
-
 const mono = JetBrains_Mono({
   subsets: ["latin"],
   weight: "400",
   variable: "--font-mono",
+  display: "swap",
 });
 
 const serif = Instrument_Serif({
@@ -36,6 +37,7 @@ const serif = Instrument_Serif({
   weight: "400",
   style: "italic",
   variable: "--font-serif",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
