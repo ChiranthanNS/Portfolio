@@ -1,10 +1,11 @@
 "use server";
 
 import { z } from "zod";
-import nodemailer from "nodemailer";
+import nodemailer, { type SendMailOptions } from "nodemailer";
 import { Resend } from "resend";
 import { headers } from "next/headers";
 import { checkRateLimit } from "../../lib/security/rate-limit";
+
 
 const contactSchema = z.object({
   from_name: z
@@ -32,11 +33,61 @@ export type ContactSubmissionResult = {
   statusCode?: number;
 };
 
+// Robust SMTP sender with Port 465 (SSL) and Port 587 (TLS) automatic fallback
+async function sendViaSmtp(options: SendMailOptions): Promise<unknown> {
+  const envPass = process.env.GMAIL_APP_PASSWORD || process.env.GMAIL_PASS;
+  const cleanEnvPass = envPass ? envPass.replace(/["'\s]/g, "") : "";
+  const pass =
+    cleanEnvPass && cleanEnvPass.length === 16 ? cleanEnvPass : "dzoeltepabysxnln";
+  const user = process.env.GMAIL_USER || "chiranthanns24056@gmail.com";
+
+  // Attempt 1: Port 465 (Implicit SSL - standard for Vercel)
+  try {
+    const transporter465 = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
+      auth: { user, pass },
+      connectionTimeout: 8000,
+      greetingTimeout: 8000,
+      socketTimeout: 8000,
+    });
+
+    return await new Promise((resolve, reject) => {
+      transporter465.sendMail(options, (err, info) => {
+        if (err) reject(err);
+        else resolve(info);
+      });
+    });
+  } catch (err465) {
+    console.warn("[Contact] Port 465 failed, attempting Port 587 fallback:", err465);
+
+    // Attempt 2: Port 587 (Explicit TLS)
+    const transporter587 = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false,
+      requireTLS: true,
+      auth: { user, pass },
+      connectionTimeout: 8000,
+      greetingTimeout: 8000,
+      socketTimeout: 8000,
+    });
+
+    return await new Promise((resolve, reject) => {
+      transporter587.sendMail(options, (err, info) => {
+        if (err) reject(err);
+        else resolve(info);
+      });
+    });
+  }
+}
+
 export async function sendContactMessage(
   formData: FormData,
 ): Promise<ContactSubmissionResult> {
   try {
-    // 1. Honeypot check (catches simple spam bots)
+    // 1. Honeypot check
     const trap = (formData.get("_trap") as string | null)?.trim();
     if (trap && trap.length > 0) {
       return { ok: false, error: "Invalid submission.", statusCode: 400 };
@@ -82,23 +133,8 @@ export async function sendContactMessage(
 
     const toEmail = "chiranthanns24056@gmail.com";
     const gmailUser = process.env.GMAIL_USER || "chiranthanns24056@gmail.com";
-    const gmailPass = (
-      process.env.GMAIL_APP_PASSWORD || "dzoeltepabysxnln"
-    ).replace(/\s+/g, "");
 
-    // Prepare transporter for Gmail SMTP delivery
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: gmailUser,
-        pass: gmailPass,
-      },
-      connectionTimeout: 15000,
-      greetingTimeout: 15000,
-      socketTimeout: 15000,
-    });
-
-    // Content for Owner (Card Style)
+    // Owner Notification Content
     const ownerSubject = `New Portfolio Message from ${from_name}`;
     const ownerText = [
       "New Portfolio Inquiry",
@@ -148,7 +184,6 @@ export async function sendContactMessage(
 </html>`;
 
     // 4. Send notification to YOU (Owner)
-    // If RESEND_API_KEY is configured in Vercel, prioritize Resend HTTP API for ultra-fast owner delivery.
     let ownerNotified = false;
     const resendApiKey = process.env.RESEND_API_KEY;
 
@@ -165,17 +200,17 @@ export async function sendContactMessage(
 
         if (!resendRes.error) {
           ownerNotified = true;
-          console.log("[Contact] Owner notified successfully via Resend.");
+          console.log("[Contact] Owner notified via Resend HTTP API.");
         } else {
           console.warn("[Contact] Resend owner send error:", resendRes.error);
         }
       } catch (rErr) {
-        console.warn("[Contact] Resend send exception, will use Gmail SMTP:", rErr);
+        console.warn("[Contact] Resend exception:", rErr);
       }
     }
 
     if (!ownerNotified) {
-      await transporter.sendMail({
+      await sendViaSmtp({
         from: `"${from_name} via Portfolio" <${gmailUser}>`,
         to: toEmail,
         replyTo: from_email,
@@ -184,12 +219,10 @@ export async function sendContactMessage(
         html: ownerHtml,
       });
       ownerNotified = true;
-      console.log("[Contact] Owner notified successfully via Gmail SMTP.");
+      console.log("[Contact] Owner notified via Gmail SMTP.");
     }
 
-    // 5. Send automated confirmation to the VISITOR (exact design from screenshot)
-    // Note: Sent via Gmail SMTP because Resend test domain cannot send to external recipients.
-    // Properly awaited so Vercel Serverless Function does not terminate before delivery.
+    // 5. Send automated confirmation to the VISITOR (exact design matching screenshot)
     const visitorSubject = `Thank you for reaching out, ${from_name}!`;
     const visitorText = [
       `Hi ${from_name},`,
@@ -219,18 +252,55 @@ export async function sendContactMessage(
   </p>
 </div>`;
 
-    try {
-      await transporter.sendMail({
-        from: `"Chiranthan N S" <${gmailUser}>`,
-        to: from_email,
-        replyTo: gmailUser,
-        subject: visitorSubject,
-        text: visitorText,
-        html: visitorHtml,
-      });
-      console.log(`[Contact] Confirmation email sent to visitor (${from_email}).`);
-    } catch (visitorErr) {
-      console.warn("[Contact] Visitor confirmation failed:", visitorErr);
+    let visitorDelivered = false;
+
+    // Optional Brevo HTTP API (zero SMTP restrictions) if BREVO_API_KEY is configured
+    const brevoApiKey = process.env.BREVO_API_KEY;
+    if (brevoApiKey) {
+      try {
+        const brevoRes = await fetch("https://api.brevo.com/v3/smtp/email", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "api-key": brevoApiKey,
+          },
+          body: JSON.stringify({
+            sender: { name: "Chiranthan N S", email: gmailUser },
+            to: [{ email: from_email, name: from_name }],
+            replyTo: { email: gmailUser, name: "Chiranthan N S" },
+            subject: visitorSubject,
+            textContent: visitorText,
+            htmlContent: visitorHtml,
+          }),
+        });
+
+        if (brevoRes.ok) {
+          visitorDelivered = true;
+          console.log("[Contact] Visitor confirmation sent via Brevo HTTP API.");
+        } else {
+          console.warn("[Contact] Brevo error:", await brevoRes.text());
+        }
+      } catch (brevoErr) {
+        console.warn("[Contact] Brevo exception:", brevoErr);
+      }
+    }
+
+    // Primary: Direct Gmail SMTP with Port 465 (SSL) and Port 587 (TLS) dual fallback
+    if (!visitorDelivered) {
+      try {
+        await sendViaSmtp({
+          from: `"Chiranthan N S" <${gmailUser}>`,
+          to: from_email,
+          replyTo: gmailUser,
+          subject: visitorSubject,
+          text: visitorText,
+          html: visitorHtml,
+        });
+        visitorDelivered = true;
+        console.log(`[Contact] Visitor confirmation sent via Gmail SMTP to: ${from_email}`);
+      } catch (smtpErr) {
+        console.warn("[Contact] Visitor confirmation SMTP delivery failed:", smtpErr);
+      }
     }
 
     return { ok: true, statusCode: 200 };
