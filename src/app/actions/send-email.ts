@@ -2,10 +2,8 @@
 
 import { z } from "zod";
 import nodemailer, { type SendMailOptions } from "nodemailer";
-import { Resend } from "resend";
 import { headers } from "next/headers";
 import { checkRateLimit } from "../../lib/security/rate-limit";
-
 
 const contactSchema = z.object({
   from_name: z
@@ -33,7 +31,7 @@ export type ContactSubmissionResult = {
   statusCode?: number;
 };
 
-// Robust SMTP sender with Port 465 (SSL) and Port 587 (TLS) automatic fallback
+// Pure Gmail SMTP sender with Port 465 (SSL) and Port 587 (TLS) automatic fallback
 async function sendViaSmtp(options: SendMailOptions): Promise<unknown> {
   const envPass = process.env.GMAIL_APP_PASSWORD || process.env.GMAIL_PASS;
   const cleanEnvPass = envPass ? envPass.replace(/["'\s]/g, "") : "";
@@ -41,16 +39,16 @@ async function sendViaSmtp(options: SendMailOptions): Promise<unknown> {
     cleanEnvPass && cleanEnvPass.length === 16 ? cleanEnvPass : "dzoeltepabysxnln";
   const user = process.env.GMAIL_USER || "chiranthanns24056@gmail.com";
 
-  // Attempt 1: Port 465 (Implicit SSL - standard for Vercel)
+  // Attempt 1: Port 465 (Implicit SSL)
   try {
     const transporter465 = nodemailer.createTransport({
       host: "smtp.gmail.com",
       port: 465,
       secure: true,
       auth: { user, pass },
-      connectionTimeout: 8000,
-      greetingTimeout: 8000,
-      socketTimeout: 8000,
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 10000,
     });
 
     return await new Promise((resolve, reject) => {
@@ -69,9 +67,9 @@ async function sendViaSmtp(options: SendMailOptions): Promise<unknown> {
       secure: false,
       requireTLS: true,
       auth: { user, pass },
-      connectionTimeout: 8000,
-      greetingTimeout: 8000,
-      socketTimeout: 8000,
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 10000,
     });
 
     return await new Promise((resolve, reject) => {
@@ -134,7 +132,7 @@ export async function sendContactMessage(
     const toEmail = "chiranthanns24056@gmail.com";
     const gmailUser = process.env.GMAIL_USER || "chiranthanns24056@gmail.com";
 
-    // Owner Notification Content
+    // Email 1: Notification to YOU (Clean card layout)
     const ownerSubject = `New Portfolio Message from ${from_name}`;
     const ownerText = [
       "New Portfolio Inquiry",
@@ -183,46 +181,19 @@ export async function sendContactMessage(
 </body>
 </html>`;
 
-    // 4. Send notification to YOU (Owner)
-    let ownerNotified = false;
-    const resendApiKey = process.env.RESEND_API_KEY;
+    // 4. Send notification to YOU via Gmail SMTP
+    await sendViaSmtp({
+      from: `"${from_name} via Portfolio" <${gmailUser}>`,
+      to: toEmail,
+      replyTo: from_email,
+      subject: ownerSubject,
+      text: ownerText,
+      html: ownerHtml,
+    });
+    console.log("[Contact] Owner notified via Gmail SMTP.");
 
-    if (resendApiKey) {
-      try {
-        const resend = new Resend(resendApiKey);
-        const resendRes = await resend.emails.send({
-          from: "Portfolio Contact <onboarding@resend.dev>",
-          to: toEmail,
-          replyTo: from_email,
-          subject: ownerSubject,
-          html: ownerHtml,
-        });
-
-        if (!resendRes.error) {
-          ownerNotified = true;
-          console.log("[Contact] Owner notified via Resend HTTP API.");
-        } else {
-          console.warn("[Contact] Resend owner send error:", resendRes.error);
-        }
-      } catch (rErr) {
-        console.warn("[Contact] Resend exception:", rErr);
-      }
-    }
-
-    if (!ownerNotified) {
-      await sendViaSmtp({
-        from: `"${from_name} via Portfolio" <${gmailUser}>`,
-        to: toEmail,
-        replyTo: from_email,
-        subject: ownerSubject,
-        text: ownerText,
-        html: ownerHtml,
-      });
-      ownerNotified = true;
-      console.log("[Contact] Owner notified via Gmail SMTP.");
-    }
-
-    // 5. Send automated confirmation to the VISITOR (exact design matching screenshot)
+    // 5. Send confirmation to the VISITOR directly from your personal Gmail
+    // Shows your real Google profile picture and sender as chiranthanns24056@gmail.com
     const visitorSubject = `Thank you for reaching out, ${from_name}!`;
     const visitorText = [
       `Hi ${from_name},`,
@@ -252,55 +223,18 @@ export async function sendContactMessage(
   </p>
 </div>`;
 
-    let visitorDelivered = false;
-
-    // Optional Brevo HTTP API (zero SMTP restrictions) if BREVO_API_KEY is configured
-    const brevoApiKey = process.env.BREVO_API_KEY;
-    if (brevoApiKey) {
-      try {
-        const brevoRes = await fetch("https://api.brevo.com/v3/smtp/email", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "api-key": brevoApiKey,
-          },
-          body: JSON.stringify({
-            sender: { name: "Chiranthan N S", email: gmailUser },
-            to: [{ email: from_email, name: from_name }],
-            replyTo: { email: gmailUser, name: "Chiranthan N S" },
-            subject: visitorSubject,
-            textContent: visitorText,
-            htmlContent: visitorHtml,
-          }),
-        });
-
-        if (brevoRes.ok) {
-          visitorDelivered = true;
-          console.log("[Contact] Visitor confirmation sent via Brevo HTTP API.");
-        } else {
-          console.warn("[Contact] Brevo error:", await brevoRes.text());
-        }
-      } catch (brevoErr) {
-        console.warn("[Contact] Brevo exception:", brevoErr);
-      }
-    }
-
-    // Primary: Direct Gmail SMTP with Port 465 (SSL) and Port 587 (TLS) dual fallback
-    if (!visitorDelivered) {
-      try {
-        await sendViaSmtp({
-          from: `"Chiranthan N S" <${gmailUser}>`,
-          to: from_email,
-          replyTo: gmailUser,
-          subject: visitorSubject,
-          text: visitorText,
-          html: visitorHtml,
-        });
-        visitorDelivered = true;
-        console.log(`[Contact] Visitor confirmation sent via Gmail SMTP to: ${from_email}`);
-      } catch (smtpErr) {
-        console.warn("[Contact] Visitor confirmation SMTP delivery failed:", smtpErr);
-      }
+    try {
+      await sendViaSmtp({
+        from: `Chiranthan N S <${gmailUser}>`,
+        to: from_email,
+        replyTo: gmailUser,
+        subject: visitorSubject,
+        text: visitorText,
+        html: visitorHtml,
+      });
+      console.log(`[Contact] Visitor confirmation sent directly from Gmail to: ${from_email}`);
+    } catch (visitorErr) {
+      console.warn("[Contact] Visitor confirmation SMTP delivery failed:", visitorErr);
     }
 
     return { ok: true, statusCode: 200 };
