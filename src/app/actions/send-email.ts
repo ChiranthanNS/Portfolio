@@ -83,11 +83,16 @@ export async function sendContactMessage(
     const gmailAppPassword = process.env.GMAIL_APP_PASSWORD || "dzoeltepabysxnln";
 
     const transporter = nodemailer.createTransport({
-      service: "gmail",
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
       auth: {
         user: gmailUser,
         pass: gmailAppPassword,
       },
+      connectionTimeout: 4000,
+      greetingTimeout: 4000,
+      socketTimeout: 4000,
     });
 
     // 4. Send notification email to Chiranthan

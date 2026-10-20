@@ -21,18 +21,72 @@ export function ContactSection() {
 
     setSubmitting(true);
 
-    try {
-      const fd = new FormData(form);
-      const result = await sendContactMessage(fd);
+    const fd = new FormData(form);
+    const name = ((fd.get("from_name") || fd.get("name")) as string)?.trim() || "";
+    const email = ((fd.get("from_email") || fd.get("email")) as string)?.trim() || "";
+    const message = (fd.get("message") as string)?.trim() || "";
 
-      if (result.ok) {
+    const fallbackToMailto = () => {
+      const mailtoUrl = `mailto:chiranthanns24056@gmail.com?subject=${encodeURIComponent(
+        `Portfolio Inquiry from ${name || "Visitor"}`
+      )}&body=${encodeURIComponent(
+        `Hi Chiranthan,\n\n${message}\n\n---\nFrom: ${name}\nEmail: ${email}`
+      )}`;
+
+      window.location.href = mailtoUrl;
+      toast.success("Opening your mail app to send directly to Chiranthan!");
+      form.reset();
+    };
+
+    try {
+      // 1. Direct browser fetch to FormSubmit (bypasses Vercel serverless IP restrictions)
+      try {
+        const directRes = await fetch(
+          "https://formsubmit.co/ajax/chiranthanns24056@gmail.com",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: JSON.stringify({
+              name,
+              email,
+              message,
+              _subject: `New Portfolio Inquiry from ${name} (${email})`,
+              _captcha: "false",
+            }),
+          }
+        );
+
+        if (directRes.ok) {
+          const directData = await directRes.json().catch(() => null);
+          if (
+            directData &&
+            (directData.success === true || directData.success === "true")
+          ) {
+            toast.success("Thank you! Your message has been sent successfully.");
+            form.reset();
+            return;
+          }
+        }
+      } catch (clientErr) {
+        console.warn("[Contact] Direct client submit attempted:", clientErr);
+      }
+
+      // 2. Next.js Server Action fallback (Gmail SMTP)
+      const result = await sendContactMessage(fd).catch(() => null);
+
+      if (result && result.ok) {
         toast.success("Thank you! Your message has been sent successfully.");
         form.reset();
-      } else {
-        toast.error(result.error ?? "Failed to send message. Please try again.");
+        return;
       }
+
+      // 3. Seamless native email client fallback
+      fallbackToMailto();
     } catch {
-      toast.error("An unexpected error occurred. Please reach out directly via email.");
+      fallbackToMailto();
     } finally {
       setSubmitting(false);
     }
