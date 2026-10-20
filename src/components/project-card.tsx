@@ -14,6 +14,7 @@ export function ProjectCard({ project }: { project: Project }) {
             src={project.coverImage}
             alt={`${project.title} — interface preview`}
             fill
+            quality={90}
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
             loading="lazy"
             className="object-cover transition-transform duration-300 group-hover:scale-[1.03]"

@@ -29,7 +29,6 @@ const marqueeTechs = [
   "Python",
   "Java",
   "C",
-  "SQL",
   "scikit-learn",
   "PyTorch",
   "TensorFlow",
@@ -188,9 +187,9 @@ export function Hero() {
             animate="visible"
             className="flex justify-center lg:justify-end"
           >
-            <div className="relative w-full max-w-[340px] sm:max-w-[380px]">
+            <div className="relative w-full max-w-[340px] sm:max-w-[380px] pt-3 sm:pt-0">
               {/* Main Card Frame matching reference */}
-              <div className="border-border bg-surface relative aspect-[4/5] w-full overflow-hidden rounded-[2rem] border p-2 shadow-2xl">
+              <div className="border-border bg-surface relative aspect-[3/4] sm:aspect-[4/5] w-full rounded-[2rem] border p-2 shadow-2xl">
                 {/* Photo / Treatment Area */}
                 <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-[1.6rem] bg-gradient-to-b from-surface-2 to-surface">
                   {profile.avatarUrl ? (
@@ -200,7 +199,8 @@ export function Hero() {
                         alt={`${profile.fullName} — Portrait`}
                         fill
                         priority
-                        sizes="(max-width: 640px) 340px, 380px"
+                        quality={95}
+                        sizes="(max-width: 640px) 90vw, (max-width: 1024px) 400px, 450px"
                         className="object-cover object-top transition-transform duration-500 hover:scale-[1.03]"
                       />
                       {/* Subtle vignette overlay matching reference */}
@@ -237,7 +237,7 @@ export function Hero() {
                 </div>
 
                 {/* Pinned Top-Left Badge: "5+ Live projects" */}
-                <div className="border-border bg-surface/90 absolute top-4 left-4 z-20 rounded-xl border px-3.5 py-2 backdrop-blur-md shadow-lg">
+                <div className="border-border bg-surface/90 absolute -top-3 left-3 sm:top-4 sm:left-4 z-20 rounded-xl border px-3 py-1.5 sm:px-3.5 sm:py-2 backdrop-blur-md shadow-lg">
                   <span className="text-primary block font-heading text-base font-extrabold leading-none">
                     5+
                   </span>

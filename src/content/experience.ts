@@ -6,7 +6,7 @@ export const experiences: Experience[] = [
     company: "IEI Student Chapter",
     location: "VVCE, Mysuru",
     engagement: "Student Leadership",
-    startDate: "2023",
+    startDate: "2026",
     endDate: "Present",
     techStack: ["Event Management", "Coordination", "Community Building"],
     highlights: [
@@ -16,12 +16,12 @@ export const experiences: Experience[] = [
     ],
   },
   {
-    role: "Core Team Member",
+    role: "Core Member",
     company: "IEEE CIS VVCE Student Chapter",
     location: "VVCE, Mysuru",
     companyUrl: "https://ieee-cis-vvce.vercel.app/",
     engagement: "Student Leadership",
-    startDate: "2024",
+    startDate: "2026",
     endDate: "Present",
     techStack: [
       "Web Development",
@@ -39,7 +39,7 @@ export const experiences: Experience[] = [
     company: "Vector Flow",
     location: "VVCE, Mysuru",
     engagement: "Technical Club",
-    startDate: "2024",
+    startDate: "2026",
     endDate: "Present",
     techStack: ["AI/ML", "Workshops", "Technical Projects"],
     highlights: [
