@@ -20,7 +20,7 @@ export const skillGroups: SkillGroup[] = [
   },
   {
     title: "Databases",
-    skills: ["SQLite", "MongoDB", "PostgreSQL", "Supabase"],
+    skills: ["MongoDB", "Supabase", "MySQL"]
   },
   {
     title: "Tools & DevOps",
