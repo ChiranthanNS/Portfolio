@@ -21,82 +21,24 @@ export function ContactSection() {
 
     setSubmitting(true);
 
-    const fd = new FormData(form);
-    const name = ((fd.get("from_name") || fd.get("name")) as string)?.trim() || "";
-    const email = ((fd.get("from_email") || fd.get("email")) as string)?.trim() || "";
-    const message = (fd.get("message") as string)?.trim() || "";
-
-    const fallbackToMailto = () => {
-      const mailtoUrl = `mailto:chiranthanns24056@gmail.com?subject=${encodeURIComponent(
-        `Portfolio Inquiry from ${name || "Visitor"}`
-      )}&body=${encodeURIComponent(
-        `Hi Chiranthan,\n\n${message}\n\n---\nFrom: ${name}\nEmail: ${email}`
-      )}`;
-
-      window.location.href = mailtoUrl;
-      toast.success("Opening your mail app to send directly to Chiranthan!");
-      form.reset();
-    };
-
     try {
-      // 1. Direct browser fetch to FormSubmit (bypasses Vercel serverless IP restrictions)
-      try {
-        const directRes = await fetch(
-          "https://formsubmit.co/ajax/chiranthanns24056@gmail.com",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Accept: "application/json",
-            },
-            body: JSON.stringify({
-              name,
-              email,
-              message,
-              _subject: `New Portfolio Inquiry from ${name} (${email})`,
-              _captcha: "false",
-            }),
-          }
-        );
+      const fd = new FormData(form);
+      const result = await sendContactMessage(fd);
 
-        if (directRes.ok) {
-          const directData = await directRes.json().catch(() => null);
-          if (
-            directData &&
-            (directData.success === true || directData.success === "true")
-          ) {
-            toast.success("Thank you! Your message has been sent successfully.");
-            form.reset();
-            return;
-          }
-        }
-      } catch (clientErr) {
-        console.warn("[Contact] Direct client submit attempted:", clientErr);
-      }
-
-      // 2. Next.js Server Action fallback (Gmail SMTP)
-      const result = await sendContactMessage(fd).catch(() => null);
-
-      if (result && result.ok) {
+      if (result.ok) {
         toast.success("Thank you! Your message has been sent successfully.");
         form.reset();
-        return;
+      } else {
+        toast.error(result.error ?? "Failed to send message. Please try again.");
       }
-
-      // 3. Seamless native email client fallback
-      fallbackToMailto();
     } catch {
-      fallbackToMailto();
+      toast.error(
+        "An unexpected error occurred. Please reach out directly via email.",
+      );
     } finally {
       setSubmitting(false);
     }
   }
-
-  // Email Obfuscation logic to prevent bot scraping
-  const obfuscatedEmail = "Y2hpcmFudGhhbm5zMjQwNUBnbWFpbC5jb20="; // Base64 for chiranthanns24056@gmail.com
-  const decodeEmail = () => {
-    return atob(obfuscatedEmail);
-  };
 
   return (
     <section id="contact" className="scroll-mt-24 py-20">
@@ -136,10 +78,6 @@ export function ContactSection() {
                       <a
                         href={`mailto:${profile.email}`}
                         className="text-foreground hover:text-primary transition-colors text-sm font-medium"
-                        onClick={(e) => {
-                          // This is a fallback, the actual href is already set
-                          // but for extreme obfuscation, we could set the href dynamically.
-                        }}
                       >
                         {profile.email}
                       </a>
@@ -263,7 +201,7 @@ export function ContactSection() {
                     id="contact-message"
                     name="message"
                     required
-                    minLength={10}
+                    minLength={5}
                     maxLength={2000}
                     rows={5}
                     placeholder="Tell me about your project or role..."
