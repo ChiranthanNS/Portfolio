@@ -19,6 +19,10 @@ export async function GET() {
       ? gmailUser.slice(0, 3) + "***@" + gmailUser.split("@")[1]
       : null,
     passwordLength: cleanPass.length,
+    passwordPreview:
+      cleanPass.length >= 4
+        ? cleanPass.slice(0, 2) + "***" + cleanPass.slice(-2)
+        : "too_short",
     passwordHasQuotes: rawPass.includes('"') || rawPass.includes("'"),
     passwordHasSpaces: rawPass.includes(" "),
     passwordHasDashes: rawPass.includes("-"),
