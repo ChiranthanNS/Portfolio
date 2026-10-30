@@ -26,14 +26,15 @@ export function ContactSection() {
       const result = await sendContactMessage(fd);
 
       if (result.ok) {
-        toast.success("Thank you! Your message has been sent successfully.");
+        toast.success("Message sent successfully! I'll get back to you soon.");
         form.reset();
       } else {
-        toast.error(result.error ?? "Failed to send message. Please try again.");
+        toast.error(result.error ?? "Unable to send your message. Please try again.");
+        // Form fields are intentionally NOT reset on failure — preserves the user's input
       }
     } catch {
       toast.error(
-        "An unexpected error occurred. Please reach out directly via email.",
+        "Unable to send your message. Please try again or reach out directly via email.",
       );
     } finally {
       setSubmitting(false);
@@ -218,7 +219,7 @@ export function ContactSection() {
                     {submitting ? (
                       <>
                         <Loader2 className="size-4 animate-spin" />
-                        <span>Sending...</span>
+                        <span>Sending your message...</span>
                       </>
                     ) : (
                       <>
