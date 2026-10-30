@@ -1,21 +1,8 @@
-import { createRequire } from "module";
-
-const require = createRequire(import.meta.url);
-const disposableDomainsList: string[] = require("disposable-email-domains");
-
 /**
- * Fast O(1) Set lookup for known disposable / temporary email domains.
- * Note: Domain checks cannot prove mailbox ownership or deliverability,
- * but effectively prevent automated spam from burner inboxes.
+ * Common disposable / temporary email domains to prevent automated spam
+ * from temporary burner inboxes.
  */
-const disposableDomainsSet = new Set<string>(
-  disposableDomainsList.map((d: string) => d.toLowerCase().trim()),
-);
-
-/**
- * Common disposable / burner email domains to ensure coverage even if dataset varies.
- */
-const additionalBurnerDomains = new Set<string>([
+const disposableDomainsSet = new Set<string>([
   "mailinator.com",
   "10minutemail.com",
   "guerrillamail.com",
@@ -30,6 +17,15 @@ const additionalBurnerDomains = new Set<string>([
   "trashmail.com",
   "nada.ltd",
   "inboxkitten.com",
+  "burnermail.io",
+  "tempmailo.com",
+  "crazymailing.com",
+  "mohmal.com",
+  "emailondeck.com",
+  "generator.email",
+  "tempinbox.com",
+  "dropmail.me",
+  "fakeinbox.com",
 ]);
 
 /**
@@ -72,5 +68,5 @@ export function isDisposableEmail(email: string): boolean {
   const domain = parts[parts.length - 1]?.toLowerCase().trim();
   if (!domain) return false;
 
-  return disposableDomainsSet.has(domain) || additionalBurnerDomains.has(domain);
+  return disposableDomainsSet.has(domain);
 }
