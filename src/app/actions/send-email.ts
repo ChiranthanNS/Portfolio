@@ -1,7 +1,6 @@
 "use server";
 
 import { z } from "zod";
-import { Resend } from "resend";
 import nodemailer from "nodemailer";
 import { headers } from "next/headers";
 import { checkRateLimit } from "../../lib/security/rate-limit";
@@ -52,27 +51,6 @@ export type ContactSubmissionResult = {
   error?: string;
   statusCode?: number;
 };
-
-// ---------------------------------------------------------------------------
-// Diagnostic logger (safe — zero credential leakage)
-// ---------------------------------------------------------------------------
-function logDiagnostic(): void {
-  const hasResend = Boolean(process.env.RESEND_API_KEY?.trim());
-  const hasGmailUser = Boolean(process.env.GMAIL_USER?.trim());
-  const rawPass = process.env.GMAIL_APP_PASSWORD?.trim();
-  const hasGmailPass = Boolean(
-    rawPass &&
-      !rawPass.includes("REPLACE_WITH") &&
-      !rawPass.includes("xxxx") &&
-      rawPass.length >= 8,
-  );
-
-  console.info("[Contact Diagnostic]", {
-    resendConfigured: hasResend,
-    gmailConfigured: hasGmailUser && hasGmailPass,
-    environment: process.env.VERCEL_ENV || process.env.NODE_ENV || "development",
-  });
-}
 
 // ---------------------------------------------------------------------------
 // HTML Email Templates
@@ -127,7 +105,7 @@ function buildOwnerHtml(
 </html>`;
 }
 
-function buildVisitorHtml(safeHtmlName: string, safeHtmlMessage: string): string {
+function buildVisitorHtml(safeHtmlName: string, safeHtmlMessage: string, ownerEmail: string): string {
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -153,7 +131,8 @@ function buildVisitorHtml(safeHtmlName: string, safeHtmlMessage: string): string
               <p style="margin:0;font-size:14px;color:#111827;line-height:1.6;">
                 Best regards,<br>
                 <strong>Chiranthan N S</strong><br>
-                <span style="color:#6b7280;font-size:13px;">AI/ML Engineer</span>
+                <span style="color:#6b7280;font-size:13px;">AI/ML Engineer</span><br>
+                <a href="mailto:${ownerEmail}" style="color:#2563eb;text-decoration:none;font-size:13px;">${ownerEmail}</a>
               </p>
             </td>
           </tr>
@@ -216,9 +195,40 @@ export async function sendContactMessage(
 
     const { from_name, from_email, message } = parsed.data;
 
-    logDiagnostic();
+    // 4. Resolve credentials
+    const ownerEmail = (
+      process.env.CONTACT_OWNER_EMAIL?.trim() ||
+      process.env.GMAIL_USER?.trim() ||
+      "chiranthanns24056@gmail.com"
+    ).replace(/["'\s]/g, "");
 
-    // 4. Sanitize inputs
+    const gmailUser = (process.env.GMAIL_USER?.trim() || ownerEmail).replace(/["'\s]/g, "");
+    const rawGmailPass = process.env.GMAIL_APP_PASSWORD?.trim() || "";
+    // Remove all whitespace, quotes, and dashes from App Password
+    const gmailPass = rawGmailPass.replace(/["'\s-]/g, "");
+
+    const isPassValid = Boolean(
+      gmailPass &&
+        !gmailPass.includes("REPLACE_WITH") &&
+        !gmailPass.includes("xxxx") &&
+        gmailPass.length >= 8,
+    );
+
+    if (!isPassValid) {
+      console.error(
+        "[Contact] GMAIL_APP_PASSWORD is not set or invalid in Vercel environment variables. " +
+          "Please generate a 16-character App Password at https://myaccount.google.com/apppasswords " +
+          "and add it to Vercel Project Settings -> Environment Variables.",
+      );
+      return {
+        ok: false,
+        error:
+          "Email service is currently offline. Please reach out directly to " + ownerEmail,
+        statusCode: 503,
+      };
+    }
+
+    // 5. Sanitize inputs
     const safeName = sanitizeHeader(from_name);
     const safeEmail = sanitizeHeader(from_email);
     const safeHtmlName = escapeHtml(from_name);
@@ -235,38 +245,29 @@ export async function sendContactMessage(
       safeHtmlMessage,
       mailtoReplyUrl,
     );
-    const visitorHtml = buildVisitorHtml(safeHtmlName, safeHtmlMessage);
+    const visitorHtml = buildVisitorHtml(safeHtmlName, safeHtmlMessage, ownerEmail);
 
-    const ownerEmail =
-      process.env.CONTACT_OWNER_EMAIL?.trim() ||
-      process.env.GMAIL_USER?.trim() ||
-      "chiranthanns24056@gmail.com";
+    // 6. Connect via Gmail SMTP Port 465 (Direct SSL)
+    const transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
+      auth: {
+        user: gmailUser,
+        pass: gmailPass,
+      },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
+    });
 
-    const resendApiKey = process.env.RESEND_API_KEY?.trim();
-    const rawGmailPass = process.env.GMAIL_APP_PASSWORD?.trim();
-    const gmailPass = rawGmailPass?.replace(/["'\s]/g, "");
-    const gmailUser = (process.env.GMAIL_USER?.trim() || ownerEmail).replace(/["'\s]/g, "");
-
-    const isGmailConfigured = Boolean(
-      gmailPass &&
-        !gmailPass.includes("REPLACE_WITH") &&
-        !gmailPass.includes("xxxx") &&
-        gmailPass.length >= 8,
-    );
-
-    // =========================================================================
-    // OPTION 1: Resend (Modern Serverless API)
-    // =========================================================================
-    if (resendApiKey) {
-      console.info("[Contact] Dispatching via Resend API");
-      const resend = new Resend(resendApiKey);
-
-      const { error: ownerError } = await resend.emails.send({
-        from: "Portfolio Contact <onboarding@resend.dev>",
-        to: [ownerEmail],
-        replyTo: `${safeName} <${safeEmail}>`,
+    // 7. Send primary notification to Chiranthan
+    try {
+      await transporter.sendMail({
+        from: `"${safeName} via Portfolio" <${gmailUser}>`,
+        to: ownerEmail,
+        replyTo: `"${safeName}" <${safeEmail}>`,
         subject: `New Portfolio Message from ${safeName}`,
-        html: ownerHtml,
         text: [
           "New Portfolio Inquiry",
           "",
@@ -276,161 +277,71 @@ export async function sendContactMessage(
           "Message:",
           message,
           "",
-          `Reply: ${mailtoReplyUrl}`,
+          `Reply to ${safeName}: ${safeEmail}`,
         ].join("\n"),
+        html: ownerHtml,
         headers: {
           "X-Priority": "1",
           Importance: "High",
         },
       });
 
-      if (ownerError) {
-        console.error("[Contact] Resend owner notification error:", ownerError);
+      console.log(`[Contact] Inquiry delivered to ${ownerEmail}`);
+    } catch (sendErr: unknown) {
+      const errString = sendErr instanceof Error ? sendErr.message : String(sendErr);
+      console.error("[Contact] Gmail SMTP send failed:", errString);
+
+      if (
+        errString.includes("535") ||
+        errString.includes("BadCredentials") ||
+        errString.includes("Username and Password not accepted")
+      ) {
         return {
           ok: false,
           error:
-            "Unable to send message via email service. Please email me directly at " + ownerEmail,
+            "Email authentication error (535): Gmail App Password was not accepted. Please ensure GMAIL_APP_PASSWORD is set correctly in Vercel.",
           statusCode: 500,
         };
       }
 
-      console.log(`[Contact] Delivered to ${ownerEmail} via Resend.`);
-
-      // Send visitor auto-confirmation (non-fatal if on Resend sandbox domain)
-      try {
-        const { error: visitorError } = await resend.emails.send({
-          from: "Chiranthan N S <onboarding@resend.dev>",
-          to: [safeEmail],
-          replyTo: ownerEmail,
-          subject: `Thank you for reaching out, ${safeName}!`,
-          html: visitorHtml,
-          text: [
-            `Hi ${safeName},`,
-            "",
-            "Thank you for reaching out! I have received your message and will get back to you shortly.",
-            "",
-            "Best regards,",
-            "Chiranthan N S",
-            "AI/ML Engineer",
-          ].join("\n"),
-        });
-
-        if (visitorError) {
-          console.warn("[Contact] Resend visitor confirmation non-fatal warning:", visitorError);
-        }
-      } catch (visErr) {
-        console.warn("[Contact] Visitor confirmation failed (non-fatal):", visErr);
-      }
-
-      return { ok: true, statusCode: 200 };
+      return {
+        ok: false,
+        error: "Unable to send message via email. Please contact me directly at " + ownerEmail,
+        statusCode: 500,
+      };
     }
 
-    // =========================================================================
-    // OPTION 2: Gmail SMTP via Nodemailer
-    // =========================================================================
-    if (isGmailConfigured && gmailPass) {
-      console.info("[Contact] Dispatching via Gmail SMTP (Nodemailer)");
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          user: gmailUser,
-          pass: gmailPass,
+    // 8. Send confirmation email to the visitor (awaited, failure logged non-fatally)
+    try {
+      await transporter.sendMail({
+        from: `"Chiranthan N S" <${gmailUser}>`,
+        to: safeEmail,
+        replyTo: ownerEmail,
+        subject: `Thank you for reaching out, ${safeName}!`,
+        html: visitorHtml,
+        text: [
+          `Hi ${safeName},`,
+          "",
+          "Thank you for reaching out! I have received your message and will get back to you shortly.",
+          "",
+          "Best regards,",
+          "Chiranthan N S",
+          "AI/ML Engineer",
+          ownerEmail,
+        ].join("\n"),
+        headers: {
+          "Auto-Submitted": "auto-replied",
+          "X-Auto-Response-Suppress": "All",
+          Precedence: "auto_reply",
         },
-        connectionTimeout: 10000,
-        greetingTimeout: 10000,
-        socketTimeout: 15000,
       });
 
-      try {
-        // Step 1: Owner notification
-        await transporter.sendMail({
-          from: `"${safeName} via Portfolio" <${gmailUser}>`,
-          to: ownerEmail,
-          replyTo: `"${safeName}" <${safeEmail}>`,
-          subject: `New Portfolio Message from ${safeName}`,
-          text: [
-            "New Portfolio Inquiry",
-            "",
-            `Name:  ${safeName}`,
-            `Email: ${safeEmail}`,
-            "",
-            "Message:",
-            message,
-            "",
-            `Reply to ${safeName}: ${safeEmail}`,
-          ].join("\n"),
-          html: ownerHtml,
-          headers: {
-            "X-Priority": "1",
-            Importance: "High",
-          },
-        });
-
-        console.log(`[Contact] Delivered to ${ownerEmail} via Gmail SMTP.`);
-
-        // Step 2: Visitor confirmation
-        try {
-          await transporter.sendMail({
-            from: `"Chiranthan N S" <${gmailUser}>`,
-            to: safeEmail,
-            replyTo: ownerEmail,
-            subject: `Thank you for reaching out, ${safeName}!`,
-            html: visitorHtml,
-            text: [
-              `Hi ${safeName},`,
-              "",
-              "Thank you for reaching out! I have received your message and will get back to you shortly.",
-              "",
-              "Best regards,",
-              "Chiranthan N S",
-              "AI/ML Engineer",
-            ].join("\n"),
-            headers: {
-              "Auto-Submitted": "auto-replied",
-              "X-Auto-Response-Suppress": "All",
-              Precedence: "auto_reply",
-            },
-          });
-        } catch (visErr) {
-          console.warn("[Contact] Gmail visitor confirmation failed (non-fatal):", visErr);
-        }
-
-        return { ok: true, statusCode: 200 };
-      } catch (smtpErr: unknown) {
-        const errString = smtpErr instanceof Error ? smtpErr.message : String(smtpErr);
-        console.error("[Contact] Gmail SMTP send failed:", errString);
-
-        if (errString.includes("535") || errString.includes("BadCredentials") || errString.includes("Username and Password not accepted")) {
-          console.error(
-            "[Contact Auth Error] Gmail App Password rejected (535-5.7.8). " +
-              "Google has likely revoked the App Password. " +
-              "Generate a new App Password at myaccount.google.com/apppasswords or use RESEND_API_KEY.",
-          );
-        }
-
-        return {
-          ok: false,
-          error:
-            "Email service authentication failed. Please contact me directly at " + ownerEmail,
-          statusCode: 500,
-        };
-      }
+      console.log(`[Contact] Confirmation email delivered to visitor ${safeEmail}`);
+    } catch (visErr) {
+      console.warn("[Contact] Visitor confirmation delivery failed (non-fatal):", visErr);
     }
 
-    // =========================================================================
-    // OPTION 3: Neither Provider Configured
-    // =========================================================================
-    console.error(
-      "[Contact Configuration Missing] Neither RESEND_API_KEY nor valid GMAIL_APP_PASSWORD is set. " +
-        "Please configure RESEND_API_KEY (recommended) or GMAIL_APP_PASSWORD in your environment variables.",
-    );
-
-    return {
-      ok: false,
-      error:
-        "Contact form is currently being updated. Please email me directly at " + ownerEmail,
-      statusCode: 503,
-    };
+    return { ok: true, statusCode: 200 };
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
     console.error("[Contact] Unexpected error during email delivery:", errMsg);
